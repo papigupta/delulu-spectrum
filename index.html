@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Delulu Spectrum</title>
+    <meta name="theme-color" content="#f7f6f2" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app" aria-live="polite">
+      <header class="topbar">
+        <p class="eyebrow" id="screen-label">Private test</p>
+        <h1 id="app-title">Delulu Spectrum</h1>
+        <p class="promise" id="promise">
+          See the gap between how you see yourself and how your people see you.
+        </p>
+      </header>
+
+      <section class="screen" id="view"></section>
+    </main>
+
+    <template id="report-template">
+      <section class="result-hero" aria-labelledby="result-title">
+        <div class="status-line">
+          <span id="rater-count">0 anonymous ratings</span>
+          <span id="threshold-label">Waiting</span>
+        </div>
+
+        <div class="score-block">
+          <p class="score-label">Your gap</p>
+          <p class="score" id="score">+0.0</p>
+          <h2 id="result-title"></h2>
+          <p class="interpretation" id="interpretation"></p>
+        </div>
+
+        <div class="spectrum" aria-label="Overall delusion spectrum from correction cage to reinforcement bubble">
+          <div class="spectrum-labels" aria-hidden="true">
+            <span>-10</span>
+            <span>0</span>
+            <span>+10</span>
+          </div>
+          <div class="track">
+            <span class="ideal-zone" title="Emotionally useful positive tilt"></span>
+            <span class="zero-line"></span>
+            <span class="score-marker" id="score-marker"></span>
+          </div>
+          <div class="pole-labels">
+            <span>Correction cage</span>
+            <span>Calibrated</span>
+            <span>Reinforcement bubble</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="mirror-note">
+        <p class="section-kicker">Read this carefully</p>
+        <p id="note"></p>
+      </section>
+
+      <section class="domains" aria-labelledby="domains-title">
+        <div class="section-heading">
+          <p class="section-kicker">Where the gap comes from</p>
+          <h2 id="domains-title">Five visible domains</h2>
+        </div>
+        <div class="domain-list" id="domain-list"></div>
+      </section>
+
+      <section class="result-actions" id="result-actions" hidden>
+        <p class="section-kicker">Private by default</p>
+        <h2>Only share this if you want people to see your result.</h2>
+        <div class="button-row">
+          <button class="primary-button" type="button" id="share-result">Share my result</button>
+          <button class="secondary-button" type="button" id="ask-more">Ask more people</button>
+        </div>
+        <p class="helper-text" id="result-share-status" role="status"></p>
+      </section>
+
+      <section class="privacy-panel">
+        <p class="section-kicker">Rating conditions</p>
+        <ul>
+          <li>Individual ratings stay anonymous.</li>
+          <li>Your people never see your self-ratings.</li>
+          <li>Only aggregated results are shown.</li>
+          <li>Your final result stays private unless you choose to share it.</li>
+        </ul>
+      </section>
+    </template>
+
+    <template id="domain-template">
+      <article class="domain-row">
+        <div class="domain-copy">
+          <h3></h3>
+          <p></p>
+        </div>
+        <div class="domain-score">
+          <span class="gap-pill"></span>
+        </div>
+        <div class="range-wrap" role="img">
+          <div class="range-labels" aria-hidden="true">
+            <span>0</span>
+            <span>5</span>
+            <span>10</span>
+          </div>
+          <div class="range-track">
+            <span class="gap-fill"></span>
+            <span class="peer-dot marker-dot"></span>
+            <span class="self-dot marker-dot"></span>
+          </div>
+          <div class="legend" aria-hidden="true">
+            <span><i class="peer-key"></i>Your people</span>
+            <span><i class="self-key"></i>You</span>
+          </div>
+        </div>
+      </article>
+    </template>
+
+    <script type="module" src="script.js"></script>
+  </body>
+</html>
