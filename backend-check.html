@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Delulu Spectrum — Backend Check</title>
+    <style>
+      :root {
+        --paper: #f7f6f2;
+        --ink: #181817;
+        --muted: #696966;
+        --line: #cfccc3;
+        --panel: #fffefa;
+        --accent: #b84d3f;
+        --good: #3f6f5f;
+        --bad: #b84d3f;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--paper);
+        color: var(--ink);
+        line-height: 1.5;
+      }
+      .wrap { width: min(100%, 720px); margin: 0 auto; padding: 32px 18px 64px; }
+      .eyebrow {
+        margin: 0; color: var(--muted); font-size: 0.72rem; font-weight: 700;
+        letter-spacing: 0.08em; text-transform: uppercase;
+      }
+      h1 {
+        margin: 8px 0 6px; font-family: Georgia, serif; font-weight: 500;
+        font-size: clamp(2rem, 9vw, 3.4rem); line-height: 1;
+      }
+      .lede { margin: 0 0 8px; color: var(--muted); max-width: 40rem; }
+      .verdict {
+        margin: 22px 0; padding: 20px; border-radius: 12px; border: 1px solid var(--line);
+        background: var(--panel); font-size: 1.05rem; font-weight: 600;
+      }
+      .verdict.pass { border-color: var(--good); color: var(--good); }
+      .verdict.fail { border-color: var(--bad); color: var(--bad); }
+      .verdict.run { color: var(--muted); }
+      ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+      li {
+        display: grid; grid-template-columns: 30px 1fr; gap: 12px; align-items: start;
+        padding: 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel);
+      }
+      .dot { font-size: 1.2rem; line-height: 1.4; }
+      .step-title { margin: 0; font-weight: 700; }
+      .step-detail { margin: 4px 0 0; color: var(--muted); font-size: 0.9rem; overflow-wrap: anywhere; }
+      .step-detail code {
+        font-family: ui-monospace, Menlo, Monaco, monospace; font-size: 0.82rem;
+        background: rgba(24,24,23,0.05); padding: 1px 5px; border-radius: 5px;
+      }
+      .pending .dot { color: var(--muted); }
+      .ok .dot { color: var(--good); }
+      .err .dot { color: var(--bad); }
+      .controls { margin-top: 24px; display: flex; gap: 10px; flex-wrap: wrap; }
+      button {
+        font: inherit; cursor: pointer; min-height: 48px; padding: 0 20px;
+        border-radius: 8px; border: 1px solid var(--ink); background: var(--ink);
+        color: var(--paper); font-weight: 700;
+      }
+      button.ghost { background: transparent; color: var(--ink); }
+      .meta { margin-top: 18px; color: var(--muted); font-size: 0.82rem; overflow-wrap: anywhere; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <p class="eyebrow">Phase 0 · diagnostic</p>
+      <h1>Backend Check</h1>
+      <p class="lede">
+        This runs the full Delulu Spectrum loop against your real Supabase project —
+        create a session, add 3 anonymous ratings, read the result back, publish, and
+        read the shared result. Green means that step works.
+      </p>
+
+      <div class="verdict run" id="verdict">Running checks…</div>
+      <ol id="steps"></ol>
+
+      <div class="controls">
+        <button id="rerun">Run again</button>
+      </div>
+      <p class="meta" id="meta"></p>
+    </div>
+
+    <script>
+      // Same project + key the live app uses (script.js).
+      const URL_BASE = "https://agwbthntmvdkrfknmbjw.supabase.co";
+      const KEY = "sb_publishable_bsGaNa7IzjwAijUj0QJwtA_vEpOFMR7";
+
+      const DOMAINS = ["capability", "presence", "physicality", "steadiness", "craft"];
+      const SELF = { capability: 7, presence: 5, physicality: 6, steadiness: 4, craft: 8 };
+      const RATINGS = [
+        { capability: 5, presence: 7, physicality: 5, steadiness: 7, craft: 5 },
+        { capability: 6, presence: 6, physicality: 4, steadiness: 6, craft: 6 },
+        { capability: 5, presence: 5, physicality: 5, steadiness: 5, craft: 7 },
+      ];
+
+      const headers = {
+        apikey: KEY,
+        Authorization: "Bearer " + KEY,
+        "Content-Type": "application/json",
+      };
+
+      function rid(prefix) {
+        const b = new Uint8Array(8);
+        crypto.getRandomValues(b);
+        return prefix + "_" + Array.from(b, (x) => x.toString(36).padStart(2, "0")).join("");
+      }
+
+      const STEP_DEFS = [
+        "Reach your Supabase project & accept the key",
+        "Create a test session (create_session)",
+        "Add 3 anonymous ratings (add_rating)",
+        "Read the result back — owner view (get_owner_session)",
+        "Load the rater link (get_rater_session)",
+        "Publish + read the shared result (publish_result, get_public_session)",
+      ];
+
+      const stepsEl = document.getElementById("steps");
+      const verdictEl = document.getElementById("verdict");
+      const metaEl = document.getElementById("meta");
+
+      function renderSteps(states) {
+        stepsEl.innerHTML = "";
+        STEP_DEFS.forEach((title, i) => {
+          const s = states[i] || { cls: "pending", dot: "○", detail: "Waiting…" };
+          const li = document.createElement("li");
+          li.className = s.cls;
+          li.innerHTML =
+            '<span class="dot">' + s.dot + "</span>" +
+            '<div><p class="step-title">' + title + "</p>" +
+            '<p class="step-detail">' + s.detail + "</p></div>";
+          stepsEl.appendChild(li);
+        });
+      }
+
+      async function call(path, options) {
+        try {
+          const res = await fetch(URL_BASE + path, options);
+          let body = null;
+          const text = await res.text();
+          try { body = text ? JSON.parse(text) : null; } catch (_) { body = text; }
+          return { ok: res.ok, status: res.status, body };
+        } catch (e) {
+          return { ok: false, status: 0, networkError: true, body: String(e && e.message || e) };
+        }
+      }
+
+      function explain(r) {
+        if (r.networkError)
+          return "Couldn't reach Supabase. Check internet, or the project may be <b>paused</b> (free projects sleep after inactivity — open the Supabase dashboard to wake it).";
+        const code = r.body && r.body.code;
+        const msg = (r.body && (r.body.message || r.body.hint)) || JSON.stringify(r.body);
+        if (code === "PGRST205" || code === "42P01")
+          return "Table does not exist — the setup SQL was never run. (<code>" + msg + "</code>)";
+        if (code === "PGRST202")
+          return "Database function is missing. (<code>" + msg + "</code>)";
+        if (code === "42501")
+          return "Table exists, but the anonymous INSERT policy is missing (row-level security blocked it). (<code>" + msg + "</code>)";
+        return "HTTP " + r.status + " — <code>" + msg + "</code>";
+      }
+
+      async function run() {
+        verdictEl.className = "verdict run";
+        verdictEl.textContent = "Running checks…";
+        const states = STEP_DEFS.map(() => ({ cls: "pending", dot: "○", detail: "Waiting…" }));
+        renderSteps(states);
+
+        const set = (i, cls, detail) => {
+          states[i] = { cls, dot: cls === "ok" ? "●" : "✕", detail };
+          renderSteps(states);
+        };
+
+        const sessionId = rid("s");
+        const ownerToken = rid("o");
+        const publicToken = rid("p");
+        let failed = false;
+
+        // 1. Reachability + key accepted (probe a real table, like the app does)
+        let r = await call("/rest/v1/sessions?select=id&limit=1", { headers: { apikey: KEY, Authorization: "Bearer " + KEY } });
+        const tableMissing = r.body && (r.body.code === "PGRST205" || r.body.code === "42P01");
+        if (r.status === 200) set(0, "ok", "Connected, and the publishable key is accepted.");
+        else if (r.status === 404 && tableMissing) set(0, "ok", "Connected and key accepted — the 'sessions' table is missing (next step confirms).");
+        else if (r.status === 401) { set(0, "err", "Connected, but the key was rejected (401). The publishable key may be wrong, or anonymous access is disabled in Supabase → Settings → API. (<code>" + ((r.body && r.body.message) || "secret api key required") + "</code>)"); failed = true; }
+        else { set(0, "err", explain(r)); failed = true; }
+
+        // 2. Create session (via secured function, like the app now does)
+        if (!failed) {
+          r = await call("/rest/v1/rpc/create_session", {
+            method: "POST",
+            headers: headers,
+            body: JSON.stringify({
+              p_id: sessionId, p_owner_token: ownerToken,
+              p_name: "Backend check (safe to delete)", p_self_scores: SELF,
+            }),
+          });
+          if (r.ok) set(1, "ok", "Session created via create_session(): <code>" + sessionId + "</code>");
+          else { set(1, "err", explain(r)); failed = true; }
+        }
+
+        // 3. Add 3 ratings (via secured function)
+        if (!failed) {
+          let allOk = true, lastErr = "";
+          for (const scores of RATINGS) {
+            r = await call("/rest/v1/rpc/add_rating", {
+              method: "POST",
+              headers: headers,
+              body: JSON.stringify({ p_id: rid("r"), p_session_id: sessionId, p_scores: scores }),
+            });
+            if (!r.ok) { allOk = false; lastErr = explain(r); break; }
+          }
+          if (allOk) set(2, "ok", "3 anonymous ratings added via add_rating().");
+          else { set(2, "err", lastErr); failed = true; }
+        }
+
+        // 4. get_owner_session
+        if (!failed) {
+          r = await call("/rest/v1/rpc/get_owner_session", {
+            method: "POST", headers,
+            body: JSON.stringify({ p_session_id: sessionId, p_owner_token: ownerToken }),
+          });
+          const d = r.body;
+          if (r.ok && d && d.session && Array.isArray(d.ratings) && d.ratings.length === 3)
+            set(3, "ok", "Result reads back: self-scores + 3 ratings. The reveal will render.");
+          else if (r.ok && d && d.session)
+            set(3, "err", "Returned the session but " + ((d.ratings || []).length) + " ratings (expected 3). Aggregation may be off.");
+          else { set(3, "err", explain(r)); failed = true; }
+        }
+
+        // 5. get_rater_session
+        if (!failed) {
+          r = await call("/rest/v1/rpc/get_rater_session", {
+            method: "POST", headers,
+            body: JSON.stringify({ p_session_id: sessionId }),
+          });
+          if (r.ok && r.body && r.body.id) set(4, "ok", "Rater link loads the name without exposing self-scores.");
+          else set(4, "err", explain(r)); // non-fatal: app has a fallback
+        }
+
+        // 6. publish_result + get_public_session
+        if (!failed) {
+          let pub = await call("/rest/v1/rpc/publish_result", {
+            method: "POST", headers,
+            body: JSON.stringify({ p_session_id: sessionId, p_owner_token: ownerToken, p_public_token: publicToken }),
+          });
+          const token = pub.body && (pub.body.public_token || (pub.body[0] && pub.body[0].public_token));
+          if (!pub.ok || !token) { set(5, "err", "publish_result: " + explain(pub)); failed = true; }
+          else {
+            let shared = await call("/rest/v1/rpc/get_public_session", {
+              method: "POST", headers,
+              body: JSON.stringify({ p_session_id: sessionId, p_public_token: token }),
+            });
+            if (shared.ok && shared.body && shared.body.session) set(5, "ok", "Published, and the shared result reads back. Sharing works.");
+            else { set(5, "err", "get_public_session: " + explain(shared)); failed = true; }
+          }
+        }
+
+        const okCount = states.filter((s) => s.cls === "ok").length;
+        if (okCount === STEP_DEFS.length) {
+          verdictEl.className = "verdict pass";
+          verdictEl.innerHTML = "✓ Backend is fully wired. Phase 0 passed — ready to deploy.";
+        } else if (states[0].cls === "ok" && states[1].cls === "ok" && states[3].cls === "ok") {
+          verdictEl.className = "verdict pass";
+          verdictEl.innerHTML = "✓ Core loop works (create → rate → reveal). " + (STEP_DEFS.length - okCount) + " optional step(s) need a look — see red below.";
+        } else {
+          verdictEl.className = "verdict fail";
+          verdictEl.innerHTML = "✕ Something core is missing. Read the first red row — send me a screenshot and I'll generate the exact fix SQL.";
+        }
+        metaEl.innerHTML = "Test session id: <code>" + sessionId + "</code> &nbsp;·&nbsp; Project: <code>" + URL_BASE + "</code><br>This leaves one harmless test row in your <code>sessions</code> table; delete it anytime from the Supabase dashboard.";
+      }
+
+      document.getElementById("rerun").addEventListener("click", run);
+      run();
+    </script>
+  </body>
+</html>
