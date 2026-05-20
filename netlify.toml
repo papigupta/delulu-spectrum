@@ -1,0 +1,13 @@
+[build]
+  publish = "deploy"
+  command = ""
+
+[[redirects]]
+  from = "/"
+  to = "/delulu-spectrum/"
+  status = 302
+
+[[redirects]]
+  from = "/delulu-spectrum"
+  to = "/delulu-spectrum/"
+  status = 301
