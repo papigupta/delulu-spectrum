@@ -6,6 +6,7 @@ const RESULT_REQUIREMENTS = Object.freeze({
   minimumRatings: 3,
   strongSignalRatings: 5,
 });
+const OWNER_SESSION_STORAGE_KEY = "delulu_owner_session";
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 
 const domains = [
@@ -88,6 +89,12 @@ async function route() {
       return;
     }
 
+    const savedOwnerSession = getSavedOwnerSession();
+    if (savedOwnerSession) {
+      await renderOwner(savedOwnerSession.sessionId, savedOwnerSession.ownerToken);
+      return;
+    }
+
     renderSelfStart();
   } catch (error) {
     renderBackendError(error);
@@ -164,6 +171,7 @@ function renderSelfStart() {
       const rawName = document.querySelector("#person-name").value.trim();
       const ownerEmail = sanitizeEmail(emailInput.value);
       const session = await createSession(rawName || "you", ownerEmail, scores);
+      saveOwnerSession(session);
       const ownerUrl = buildUrl({ result: session.id, owner: session.ownerToken });
       window.history.pushState(null, "", ownerUrl);
       await renderOwner(session.id, session.ownerToken);
@@ -251,9 +259,12 @@ async function renderOwner(sessionId, ownerToken) {
   const session = await getOwnerSession(sessionId, ownerToken);
 
   if (!session) {
+    clearSavedOwnerSession(sessionId, ownerToken);
     renderMissingLink();
     return;
   }
+
+  saveOwnerSession(session);
 
   if (session.ratings.length < getMinimumResultRatings(session)) {
     renderWaiting(session);
@@ -553,6 +564,9 @@ async function createSession(name, ownerEmail, selfScores) {
     name: sanitizeName(name),
     owner_email: ownerEmail,
     self_scores: { ...selfScores },
+    minimum_ratings: RESULT_REQUIREMENTS.minimumRatings,
+    strong_signal_ratings: RESULT_REQUIREMENTS.strongSignalRatings,
+    ready_notified_at: null,
   };
 
   const { error } = await supabase.rpc("create_session", {
@@ -560,6 +574,9 @@ async function createSession(name, ownerEmail, selfScores) {
     p_owner_token: session.owner_token,
     p_name: session.name,
     p_self_scores: session.self_scores,
+    p_owner_email: session.owner_email,
+    p_minimum_ratings: session.minimum_ratings,
+    p_strong_signal_ratings: session.strong_signal_ratings,
   });
 
   if (error) {
@@ -843,6 +860,56 @@ function buildUrl(params) {
   return url.toString();
 }
 
+function saveOwnerSession(session) {
+  if (!session?.id || !session?.ownerToken) {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(
+      OWNER_SESSION_STORAGE_KEY,
+      JSON.stringify({
+        sessionId: session.id,
+        ownerToken: session.ownerToken,
+      }),
+    );
+  } catch (error) {
+    // Private browsing or storage restrictions should not block the core flow.
+  }
+}
+
+function getSavedOwnerSession() {
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(OWNER_SESSION_STORAGE_KEY) || "null");
+
+    if (typeof saved?.sessionId === "string" && typeof saved?.ownerToken === "string") {
+      return saved;
+    }
+  } catch (error) {
+    clearSavedOwnerSession();
+  }
+
+  return null;
+}
+
+function clearSavedOwnerSession(sessionId, ownerToken) {
+  if (sessionId && ownerToken) {
+    const saved = getSavedOwnerSession();
+
+    if (saved) {
+      if (saved.sessionId !== sessionId || saved.ownerToken !== ownerToken) {
+        return;
+      }
+    }
+  }
+
+  try {
+    window.localStorage.removeItem(OWNER_SESSION_STORAGE_KEY);
+  } catch (error) {
+    // Ignore storage cleanup failures.
+  }
+}
+
 async function shareLink({
   url,
   title,
@@ -956,6 +1023,7 @@ function normalizeSession(session, ratings = []) {
     selfScores: session.self_scores || session.selfScores || {},
     minimumRatings: session.minimum_ratings || session.minimumRatings || null,
     strongSignalRatings: session.strong_signal_ratings || session.strongSignalRatings || null,
+    readyNotifiedAt: session.ready_notified_at || session.readyNotifiedAt || "",
     ratings: ratings.map(normalizeRating),
     createdAt: session.created_at || session.createdAt || "",
   };
