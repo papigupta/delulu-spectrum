@@ -117,32 +117,44 @@ function renderSelfStart() {
         <input id="person-name" name="person-name" type="text" autocomplete="name" maxlength="36" placeholder="Your first name" />
       </label>
 
+      <label class="name-field">
+        <span>Where should we notify you when your result is ready?</span>
+        <input id="person-email" name="person-email" type="text" inputmode="email" autocomplete="email" maxlength="254" placeholder="you@example.com" required />
+      </label>
+
       <div class="question-list" id="question-list"></div>
 
       <button class="primary-button submit-button" type="submit" disabled>
         Get my rating link
       </button>
-      <p class="helper-text">No account. Your final result is private unless you share it.</p>
+      <p class="helper-text">No account. We will only use your email to send your private link and result-ready notice.</p>
     </form>
   `;
 
   const scores = {};
   const form = document.querySelector("#rating-form");
+  const emailInput = form.querySelector("#person-email");
+  const helper = form.querySelector(".helper-text");
   const submit = form.querySelector(".submit-button");
+  const syncSubmitState = () => {
+    submit.disabled = !isValidEmail(emailInput.value) || !allAnswered(scores);
+  };
 
   renderQuestions({
     target: document.querySelector("#question-list"),
     mode: "self",
     scores,
-    onChange: () => {
-      submit.disabled = !allAnswered(scores);
-    },
+    onChange: syncSubmitState,
   });
+
+  emailInput.addEventListener("input", syncSubmitState);
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
 
-    if (!allAnswered(scores)) {
+    if (!isValidEmail(emailInput.value) || !allAnswered(scores)) {
+      helper.textContent = "Enter a valid email so we can notify you when your result is ready.";
+      emailInput.focus();
       return;
     }
 
@@ -150,7 +162,8 @@ function renderSelfStart() {
       submit.disabled = true;
       submit.textContent = "Creating link...";
       const rawName = document.querySelector("#person-name").value.trim();
-      const session = await createSession(rawName || "you", scores);
+      const ownerEmail = sanitizeEmail(emailInput.value);
+      const session = await createSession(rawName || "you", ownerEmail, scores);
       const ownerUrl = buildUrl({ result: session.id, owner: session.ownerToken });
       window.history.pushState(null, "", ownerUrl);
       await renderOwner(session.id, session.ownerToken);
@@ -532,12 +545,13 @@ function renderQuestions({ target, mode, scores, personName = "them", onChange }
   });
 }
 
-async function createSession(name, selfScores) {
+async function createSession(name, ownerEmail, selfScores) {
   const session = {
     id: randomId("s"),
     owner_token: randomId("o"),
     public_token: null,
     name: sanitizeName(name),
+    owner_email: ownerEmail,
     self_scores: { ...selfScores },
   };
 
@@ -803,6 +817,14 @@ function sanitizeName(name) {
   return name.replace(/\s+/g, " ").trim().slice(0, 36) || "you";
 }
 
+function sanitizeEmail(email) {
+  return email.trim().toLowerCase().slice(0, 254);
+}
+
+function isValidEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(sanitizeEmail(email));
+}
+
 function pluralize(count, word) {
   return `${word}${count === 1 ? "" : "s"}`;
 }
@@ -930,6 +952,7 @@ function normalizeSession(session, ratings = []) {
     ownerToken: session.owner_token || session.ownerToken || "",
     publicToken: session.public_token || session.publicToken || "",
     name: session.name || "you",
+    ownerEmail: session.owner_email || session.ownerEmail || "",
     selfScores: session.self_scores || session.selfScores || {},
     minimumRatings: session.minimum_ratings || session.minimumRatings || null,
     strongSignalRatings: session.strong_signal_ratings || session.strongSignalRatings || null,
