@@ -603,6 +603,8 @@ async function addAnonymousRating(session, scores) {
     throw error;
   }
 
+  notifyReady(rating.session_id);
+
   return {
     ...session,
     ratings: [...(session.ratings || []), normalizeRating(rating)],
@@ -931,6 +933,28 @@ async function shareLink({
   }
 
   copyText(url, statusId, fallbackMessage);
+}
+
+async function notifyReady(sessionId) {
+  const body = JSON.stringify({ sessionId });
+  const endpoints = ["/notify-ready", "/.netlify/functions/notify-ready"];
+
+  for (const endpoint of endpoints) {
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body,
+        keepalive: true,
+      });
+
+      if (response.ok || response.status !== 404) {
+        return;
+      }
+    } catch (error) {
+      // Notification should never block rating submission.
+    }
+  }
 }
 
 function registerServiceWorker() {
